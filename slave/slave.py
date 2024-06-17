@@ -7,6 +7,11 @@ def get_mac_address():
     mac = uuid.UUID(int=uuid.getnode()).hex[-12:]
     return ":".join([mac[i:i+2] for i in range(0, 12, 2)])
 
+# Función para solicitar el nombre del archivo
+def get_filename():
+    filename = input("Ingrese el nombre del archivo para recibir (sin extensión): ")
+    return f"{filename}.txt"
+
 # Generar una clave RSA
 key = RSA.generate(2048)
 public_key = key.publickey().export_key().decode('utf-8')
@@ -56,6 +61,10 @@ while True:
                     credentials = f"{scp_username}:{scp_password}"
                     conn.send(credentials.encode('utf-8'))
                     print("Credenciales enviadas.")
+                    
+                    # Solicitar el nombre del archivo para recibir
+                    file_path = get_filename()
+                    print(f"El archivo se guardará como: {file_path}")
 
                     # Recibir el conjunto de hashes y la contraseña de steghide
                     hashes_and_password = conn.recv(1024).decode('utf-8')
@@ -66,6 +75,11 @@ while True:
                     # Recibir el mensaje encriptado
                     encrypted_message = conn.recv(4096)
                     print("Mensaje encriptado recibido.")
+
+                    # Guardar el mensaje encriptado en el archivo especificado
+                    with open(file_path, "wb") as file:
+                        file.write(encrypted_message)
+                    print(f"Mensaje encriptado guardado en {file_path}.")
                 else:
                     conn.send(b"REJECT")
                     print("Solicitud de archivo rechazada.")
