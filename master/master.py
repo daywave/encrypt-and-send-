@@ -69,7 +69,7 @@ def encrypt_message_with_rsa(message, public_key):
     return b''.join(encrypted_chunks)
 
 # IP del esclavo
-slave_ip = "192.168.1.66"  # Sustituye esta cadena por la IP correspondiente
+slave_ip = "148.211.67.208"  # Sustituye esta cadena por la IP correspondiente
 port = 2222  # Puerto de comunicación para sockets
 
 # Crear un socket
