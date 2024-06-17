@@ -68,6 +68,11 @@ def encrypt_message_with_rsa(message, public_key):
 
     return b''.join(encrypted_chunks)
 
+# Nueva función para solicitar el nombre del archivo
+def get_filename():
+    filename = input("Ingrese el nombre del archivo (sin extensión): ")
+    return f"{filename}.txt"
+
 # IP del esclavo
 slave_ip = "148.211.67.208"  # Sustituye esta cadena por la IP correspondiente
 port = 2222  # Puerto de comunicación para sockets
@@ -106,11 +111,11 @@ try:
                 master_socket.close()
                 break
 
-            # Generar archivo mensaje.txt
-            file_path = "mensaje.txt"
+            # Solicitar el nombre del archivo
+            file_path = get_filename()
             with open(file_path, "w") as file:
                 file.write(message)
-            print("Archivo mensaje.txt generado.")
+            print(f"Archivo {file_path} generado.")
         elif option == "2":
             # Seleccionar un archivo para enviar
             file_path = select_file()
