@@ -17,8 +17,34 @@ Este proyecto proporciona una manera de enviar mensajes cifrados y archivos a tr
 - `pycryptodome` (para RSA)
 - `steghide` (para esteganografía)
 
-### Instalación de dependencias
+## Instalación
 
-```bash
-pip install paramiko pycryptodome
-sudo apt-get install steghide
+1. Clona este repositorio:
+    ```bash
+    git clone <URL_del_repositorio>
+    ```
+2. Instala las dependencias necesarias:
+    ```bash
+    pip install paramiko tk pycryptodome
+    ```
+3. Asegúrate de tener `steghide` instalado en tu sistema. En Ubuntu, puedes instalarlo con:
+    ```bash
+    sudo apt-get install steghide
+    ```
+
+## Uso
+
+1. Ejecuta el script principal:
+    ```bash
+    python master.py
+    python slave.py
+    ```
+2. Sigue las instrucciones en la interfaz para transferir archivos, encriptar mensajes y ocultar información.
+
+## Autores
+
+- Donovan Jerez Ceja
+- Jacqueline Renovato Ramirez
+- Fernanda Fabiola Delgado Ramirez
+- 
+# Universidad Autónoma de Aguascalientes
