@@ -11,15 +11,19 @@ def send_file_via_scp(username, password, ip, port, file_path, remote_path):
     try:
         transport = paramiko.Transport((ip, port))
         transport.connect(username=username, password=password)
-
         sftp = paramiko.SFTPClient.from_transport(transport)
         sftp.put(file_path, remote_path)
-
         sftp.close()
         transport.close()
-        print("Archivo enviado exitosamente.")
+        print(f"Archivo {file_path} enviado exitosamente a {remote_path}.")
+    except paramiko.AuthenticationException as auth_error:
+        print(f"Error de autenticación al enviar el archivo {file_path}: {auth_error}")
+    except paramiko.SSHException as ssh_error:
+        print(f"Error SSH al enviar el archivo {file_path}: {ssh_error}")
+    except FileNotFoundError as fnf_error:
+        print(f"Archivo no encontrado {file_path}: {fnf_error}")
     except Exception as e:
-        print(f"Error al enviar el archivo: {e}")
+        print(f"Error al enviar el archivo {file_path}: {e}")
 
 def receive_all(sock):
     data = b''
@@ -32,7 +36,7 @@ def receive_all(sock):
 
 def select_file():
     root = tk.Tk()
-    root.withdraw()  # Oculta la ventana principal de Tkinter
+    root.withdraw()
     file_path = filedialog.askopenfilename()
     return file_path
 
@@ -59,65 +63,49 @@ def encrypt_message_with_rsa(message, public_key):
     rsa_key = RSA.import_key(public_key)
     cipher_rsa = PKCS1_OAEP.new(rsa_key)
     encrypted_chunks = []
-    chunk_size = rsa_key.size_in_bytes() - 42  # Ajustar según el padding OAEP
-
+    chunk_size = rsa_key.size_in_bytes() - 42
     for i in range(0, len(message), chunk_size):
         chunk = message[i:i + chunk_size]
         encrypted_chunk = cipher_rsa.encrypt(chunk.encode('utf-8'))
         encrypted_chunks.append(encrypted_chunk)
-
     return b''.join(encrypted_chunks)
 
-# Nueva función para solicitar el nombre del archivo
 def get_filename():
     filename = input("Ingrese el nombre del archivo (sin extensión): ")
     return f"{filename}.txt"
 
-# IP del esclavo
-slave_ip = "148.211.67.208"  # Sustituye esta cadena por la IP correspondiente
-port = 2222  # Puerto de comunicación para sockets
+def clear_directory(path):
+    for filename in os.listdir(path):
+        file_path = os.path.join(path, filename)
+        if os.path.isfile(file_path):
+            os.unlink(file_path)
+        elif os.path.isdir(file_path):
+            os.rmdir(file_path)
+    print(f"Contenido del directorio {path} eliminado.")
 
-# Crear un socket
-master_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+def calculate_file_hash(file_path):
+    sha512_hash = hashlib.sha512()
+    with open(file_path, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha512_hash.update(byte_block)
+    return sha512_hash.hexdigest()
 
-print(f"Intentando conectar con {slave_ip} en el puerto {port}...")
-
-try:
-    # Conectar con el esclavo
-    master_socket.connect((slave_ip, port))
-    print("Conexión establecida.")
-
+def handle_file_transfer(master_socket, master_path, slave_ip, public_key):
     while True:
-        # Solicitar la llave pública
-        master_socket.send(b"SEND_PUBLIC_KEY")
-
-        # Recibir la llave pública
-        public_key = receive_all(master_socket)
-        print(f"Clave pública recibida: {public_key}")
-
-        # Recibir la dirección MAC del esclavo
-        mac_address = receive_all(master_socket)
-        print(f"Dirección MAC del esclavo: {mac_address}")
-
-        # Seleccionar opción: escribir mensaje o seleccionar archivo
         option = input("Seleccione una opción (1: Escribir mensaje, 2: Seleccionar archivo, 3: Salir): ")
 
         if option == "1":
-            # Capturar un mensaje
             message = input("Ingrese el mensaje a enviar: ")
             if message.lower() == "stop":
                 master_socket.send(b"STOP")
                 print("Conexión cerrada por el master.")
                 master_socket.close()
                 break
-
-            # Solicitar el nombre del archivo
-            file_path = get_filename()
+            file_path = os.path.join(master_path, get_filename())
             with open(file_path, "w") as file:
                 file.write(message)
             print(f"Archivo {file_path} generado.")
         elif option == "2":
-            # Seleccionar un archivo para enviar
             file_path = select_file()
             if not file_path:
                 print("No se seleccionó ningún archivo.")
@@ -131,67 +119,108 @@ try:
             print("Opción inválida.")
             continue
 
-        # Calcular el hash SHA-384 del archivo
+        sha384_path = os.path.join(master_path, "sha384_mensaje_original")
         file_hash = calculate_sha384(file_path)
-        print(f"Hash SHA-384 del archivo: {file_hash}")
+        with open(sha384_path, "w") as file:
+            file.write(file_hash)
+        print(f"Hash SHA-384 del archivo almacenado en {sha384_path}: {file_hash}")
 
-        # Leer el contenido del archivo
         with open(file_path, "r") as file:
             message = file.read()
 
-        # Cifrar el mensaje con RSA invertido
         encrypted_message = encrypt_message_with_rsa(message, public_key)
-        print("Mensaje encriptado con RSA.")
+        encrypted_path = os.path.join(master_path, "encriptado_con_RSA")
+        with open(encrypted_path, "wb") as file:
+            file.write(encrypted_message)
+        print("Mensaje encriptado con RSA y almacenado en encriptado_con_RSA.")
 
-        # Generar el hash SHA-512 del mensaje encriptado
+        os.remove(file_path)
+        print(f"Archivo sin encriptar {file_path} eliminado.")
+
+        sha512_path = os.path.join(master_path, "sha512_mensaje_encriptado")
         encrypted_message_hash = calculate_sha512(encrypted_message)
-        print(f"Hash SHA-512 del mensaje encriptado: {encrypted_message_hash}")
+        with open(sha512_path, "w") as file:
+            file.write(encrypted_message_hash)
+        print(f"Hash SHA-512 del mensaje encriptado almacenado en {sha512_path}: {encrypted_message_hash}")
 
-        # Seleccionar un objeto para esconder el mensaje
         cover_file_path = select_file()
         if not cover_file_path:
             print("No se seleccionó ningún archivo para ocultar el mensaje.")
             continue
 
-        # Solicitar la contraseña para steghide
         steghide_password = input("Ingrese la contraseña para steghide: ")
-
-        # Usar steghide para ocultar el mensaje en el objeto
-        stego_file_path = "stego_file"
-        os.system(f"steghide embed -cf {cover_file_path} -ef {file_path} -sf {stego_file_path} -p '{steghide_password}'")
+        stego_file_path = os.path.join(master_path, "stego_file")
+        os.system(f"steghide embed -cf {cover_file_path} -ef {encrypted_path} -sf {stego_file_path} -p '{steghide_password}'")
         print("Mensaje oculto en el objeto usando steghide.")
 
-        # Calcular el hash Blake2 del archivo con la información oculta
+        blake2_path = os.path.join(master_path, "blake2_stego")
         blake2_hash = calculate_blake2(stego_file_path)
-        print(f"Hash Blake2 del archivo con información oculta: {blake2_hash}")
+        with open(blake2_path, "w") as file:
+            file.write(blake2_hash)
+        print(f"Hash Blake2 del archivo con información oculta almacenado en {blake2_path}: {blake2_hash}")
 
-        # Enviar solicitud de envío de archivo
+        sha512_hashes = {}
+        for path in [sha384_path, sha512_path, blake2_path, stego_file_path]:
+            sha512_hashes[os.path.basename(path)] = calculate_file_hash(path)
+
         master_socket.send(b"SEND_FILE_REQUEST")
-
-        # Recibir respuesta de la solicitud
         response = master_socket.recv(1024).decode('utf-8')
         if response == "ACCEPT":
-            # Recibir credenciales usando la nueva función
             credentials = receive_all(master_socket)
             username, password = credentials.split(':')
             print(f"Credenciales recibidas - Usuario: {username}, Contraseña: {password}")
 
-            # Enviar los hashes y la contraseña de steghide al esclavo
-            hashes_and_password = f"{file_hash}:{encrypted_message_hash}:{blake2_hash}:{steghide_password}"
-            master_socket.send(hashes_and_password.encode('utf-8'))
-            print("Hashes y contraseña de steghide enviados al esclavo.")
+            file_paths = [sha384_path, sha512_path, blake2_path, stego_file_path]
+            for path in file_paths:
+                remote_path = f"/home/{username}/lista/{os.path.basename(path)}"
+                send_file_via_scp(username, password, slave_ip, 22, path, remote_path)
 
-            # Enviar el mensaje encriptado al esclavo
-            master_socket.send(encrypted_message)
-            print("Mensaje encriptado enviado al esclavo.")
+            master_socket.send(str(sha512_hashes).encode('utf-8'))
 
-            # Enviar archivo mediante SCP
-            remote_path = f"/home/{username}/mensaje_recibido{os.path.splitext(stego_file_path)[1]}"
-            send_file_via_scp(username, password, slave_ip, 22, stego_file_path, remote_path)
+            confirmation = master_socket.recv(1024).decode('utf-8')
+            if confirmation == "FILES_RECEIVED":
+                master_socket.send(steghide_password.encode('utf-8'))
+                print("Contraseña de steghide enviada al esclavo.")
+            else:
+                print("Error en la recepción de archivos por parte del esclavo.")
         else:
             print("Solicitud rechazada por el esclavo.")
 
-except ConnectionRefusedError:
-    print("Conexión rechazada. Asegúrate de que el esclavo está en ejecución y escuchando en el puerto especificado.")
-except Exception as e:
-    print(f"Ocurrió un error: {e}")
+def main():
+    master_path = "/home/ddaywave/lista"
+    os.makedirs(master_path, exist_ok=True)
+
+    if os.listdir(master_path):
+        clear_dir = input(f"El directorio {master_path} no está vacío. ¿Desea vaciarlo antes de continuar? (yes/no): ")
+        if clear_dir.lower() == 'yes':
+            clear_directory(master_path)
+        else:
+            print("Proceso detenido por el usuario.")
+            exit()
+
+    slave_ip = "192.168.1.67"  # Sustituye esta cadena por la IP correspondiente
+    port = 2222  # Puerto de comunicación para sockets
+
+    master_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    print(f"Intentando conectar con {slave_ip} en el puerto {port}...")
+
+    try:
+        master_socket.connect((slave_ip, port))
+        print("Conexión establecida.")
+
+        master_socket.send(b"SEND_PUBLIC_KEY")
+        public_key = receive_all(master_socket)
+        print(f"Clave pública recibida: {public_key}")
+
+        mac_address = receive_all(master_socket)
+        print(f"Dirección MAC del esclavo: {mac_address}")
+
+        handle_file_transfer(master_socket, master_path, slave_ip, public_key)
+
+    except ConnectionRefusedError:
+        print("Conexión rechazada. Asegúrate de que el esclavo está en ejecución y escuchando en el puerto especificado.")
+    except Exception as e:
+        print(f"Ocurrió un error: {e}")
+
+if __name__ == "__main__":
+    main()
